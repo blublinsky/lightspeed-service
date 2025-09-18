@@ -10,6 +10,7 @@ from cryptography import x509
 
 import ols.app.models.config as config_model
 from ols import constants
+from ols.src.auth.k8s import K8sClientSingleton
 
 
 def add_ca_to_certificates_store(
@@ -38,6 +39,35 @@ def add_ca_to_certificates_store(
             logger.debug(
                 "Written certificate with length %d bytes", len(new_certificate_data)
             )
+    # Getting and adding kube-root certificates
+    logger.info("Adding kube-root certificate to certificates store", cert_path)
+    v1_client = K8sClientSingleton.get_corev1api_client()
+    # get certs string. Note that here we are hard coding name and namespace of the config map
+    # check this if we will change namespace that we are using
+    cert_string = v1_client.read_namespaced_config_map(
+        name="kube-root-ca.crt", namespace="openshift-lightspeed"
+    ).data["ca.crt"]
+    # split certificates string
+    certs_array = cert_string.split("-----BEGIN CERTIFICATE-----")
+    certs = [
+        "-----BEGIN CERTIFICATE-----" + certs_array[i]
+        for i in range(1, len(certs_array))
+    ]
+    # open store file
+    with open(cert_location, "ab") as certifi_store:
+        for cert_data in certs:
+            # for every certificate
+            cert_bytes = cert_data.encode("utf-8")  # convert cert strin to bytes
+            cert = x509.load_pem_x509_certificates(cert_bytes)  # convert cert data
+            # append the certificate to the certificates store
+            if cert in certifi_certs:
+                logger.warning(
+                    "Certificate '%s' is already in certificates store", cert_data
+                )
+                continue
+            # put certificate into the store
+            certifi_store.write(cert_bytes)
+            logger.debug("Written certificate with length %d bytes", len(cert_bytes))
 
 
 def generate_certificates_file(

@@ -38,6 +38,7 @@ class K8sClientSingleton:
 
     _instance = None
     _api_client = None
+    _corev1api_client = None
     _authn_api: kubernetes.client.AuthenticationV1Api
     _authz_api: kubernetes.client.AuthorizationV1Api
     _cluster_id = None
@@ -101,6 +102,8 @@ class K8sClientSingleton:
                 )
                 api_client = kubernetes.client.ApiClient(configuration)
                 cls._api_client = api_client
+                corev1api_client = kubernetes.client.CoreV1Api(api_client)
+                cls._corev1api_client = corev1api_client
                 cls._custom_objects_api = kubernetes.client.CustomObjectsApi(api_client)
                 cls._authn_api = kubernetes.client.AuthenticationV1Api(api_client)
                 cls._authz_api = kubernetes.client.AuthorizationV1Api(api_client)
@@ -118,6 +121,16 @@ class K8sClientSingleton:
         if cls._instance is None or cls._authn_api is None:
             cls()
         return cls._authn_api
+
+    @classmethod
+    def get_corev1api_client(cls) -> kubernetes.client.CoreV1Api:
+        """Return the Core V1 API client instance.
+
+        Ensures the singleton is initialized before returning the Authentication API client.
+        """
+        if cls._instance is None or cls._corev1api_client is None:
+            cls()
+        return cls._corev1api_client
 
     @classmethod
     def get_authz_api(cls) -> kubernetes.client.AuthorizationV1Api:
