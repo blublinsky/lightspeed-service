@@ -15,6 +15,10 @@ from tests.e2e.utils.wait_for_ols import wait_for_ols
 OC_COMMAND_RETRY_COUNT = 120
 OC_COMMAND_RETRY_DELAY = 5
 
+# After the app-server Deployment exists, the Running pod can lag (pulls, scheduling).
+OLS_APP_SERVER_POD_RETRY_COUNT = 90
+OLS_APP_SERVER_POD_RETRY_DELAY = 10
+
 disconnected = os.getenv("DISCONNECTED", "")
 
 
@@ -453,9 +457,10 @@ def install_ols() -> tuple[str, str, str]:  # pylint: disable=R0915, R0912  # no
     # Ensure ols pod exists so it gets deleted during the scale down to zero, otherwise
     # there may be a race condition.
     retry_until_timeout_or_success(
-        OC_COMMAND_RETRY_COUNT,
-        OC_COMMAND_RETRY_DELAY,
+        OLS_APP_SERVER_POD_RETRY_COUNT,
+        OLS_APP_SERVER_POD_RETRY_DELAY,
         lambda: cluster_utils.get_pod_by_prefix(fail_not_found=False),
+        "Waiting for OLS app server pod (running)",
     )
 
     # get the name of the OLS image from CI so we can substitute it in
