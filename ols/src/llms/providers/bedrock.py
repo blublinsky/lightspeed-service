@@ -12,9 +12,11 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
 from ols import constants
+from ols.app.models.config import ModelParameters
 from ols.src.llms.llm_loader import LLMConfigurationError
 from ols.src.llms.providers.provider import LLMProvider
 from ols.src.llms.providers.registry import register_llm_provider_as
+from ols.src.llms.providers.utils import populate_openai_reasoning
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,7 @@ class Bedrock(LLMProvider):
             "api_key": self.credentials or "",
             "model": self.model,
             "temperature": 0.01,
-            "max_tokens": 512,
+            "max_tokens": 4096,
         }
 
     def _has_aws_credentials(self) -> bool:
@@ -105,12 +107,63 @@ class Bedrock(LLMProvider):
         )
         return AwsSigV4Auth(credentials=creds, region=region, service="bedrock")
 
+    def _configure_anthropic_thinking(
+        self, params: dict[str, Any], model_params: ModelParameters, max_tokens: int
+    ) -> None:
+        """Configure thinking parameters for Anthropic models.
+
+        Bedrock requires thinking budget >= 1024 and < max_tokens.
+        If max_tokens is too small, increase it to accommodate the minimum budget.
+        """
+        reasoning_config = model_params.reasoning_config or {}
+        if not reasoning_config:
+            return
+
+        # Validate max_tokens is sufficient for thinking budget
+        # Minimum budget is 1024, so max_tokens must be > 1024
+        if max_tokens <= 1024:
+            msg = (
+                f"max_tokens ({max_tokens}) must be > 1024 when thinking is enabled. "
+                "Increasing max_tokens to 4096."
+            )
+            logger.warning(msg)
+            params["max_tokens"] = 4096
+            max_tokens = 4096
+
+        params["additional_model_request_fields"] = {"thinking": {}}
+        if reasoning_config.get("thinking_effort", "") != "":
+            params["additional_model_request_fields"]["thinking"][
+                "reasoning_effort"
+            ] = reasoning_config.get("thinking_effort")
+
+        else:
+            # Fallback to additional_model_request_fields for older models
+            if "type" in reasoning_config:
+                params["additional_model_request_fields"]["thinking"]["type"] = (
+                    reasoning_config["type"]
+                )
+            if "budget_tokens" in reasoning_config:
+                tokens = reasoning_config["budget_tokens"]
+                # for Anthropic Bedrock min tokens is 1,024, max below model's max_tokens
+                tokens = max(1024, min(tokens, int(max_tokens * 0.25)))
+                params["additional_model_request_fields"]["thinking"][
+                    "budget_tokens"
+                ] = tokens
+
+        # Remove sampling parameters when thinking is enabled
+        params.pop("temperature", None)
+        params.pop("top_p", None)
+        params.pop("top_k", None)
+
     def load(self) -> BaseChatModel:
         """Load LLM based on model prefix."""
         params = {**self.params}
         api_key = params.pop("api_key")
         model = params.pop("model")
         use_iam = self._has_aws_credentials()
+
+        model_config = self.provider_config.models.get(self.model)
+        model_params = getattr(model_config, "parameters", None) or ModelParameters()
 
         if model.startswith(ANTHROPIC_MODEL_PREFIX):
             params.pop("max_completion_tokens", None)
@@ -126,6 +179,12 @@ class Bedrock(LLMProvider):
 
             params["model_id"] = model_id
             params["region_name"] = region
+
+            max_tokens = params.pop("max_tokens", 4096)
+            params["max_tokens"] = max_tokens
+
+            self._configure_anthropic_thinking(params, model_params, max_tokens)
+
             return ChatBedrockConverse(**params)
 
         base_url = f"{self.url}/v1"
@@ -135,13 +194,11 @@ class Bedrock(LLMProvider):
             base_url = f"{self.url}/openai/v1"
             use_responses_api = True
 
-        max_tokens = params.pop("max_tokens", None)
-        if max_tokens is not None:
-            params["max_completion_tokens"] = max_tokens
-
         params["model"] = model
         params["base_url"] = base_url
         params["use_responses_api"] = use_responses_api
+
+        populate_openai_reasoning(model_params, params)
 
         if use_iam:
             region = self._region_from_url()

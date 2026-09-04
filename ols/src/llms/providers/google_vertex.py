@@ -8,6 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_vertexai.model_garden import ChatAnthropicVertex
 
 from ols import constants
+from ols.app.models.config import ModelParameters
 from ols.src.llms.providers.provider import LLMProvider
 from ols.src.llms.providers.registry import register_llm_provider_as
 from ols.src.llms.providers.utils import load_vertex_credentials
@@ -40,7 +41,7 @@ class GoogleVertex(LLMProvider):
             self.project = vertex_config.project
             self.location = vertex_config.location
 
-        params: dict[str, Any] = {
+        default_params: dict[str, Any] = {
             "model": self.model,
             "project": self.project,
             "location": self.location,
@@ -50,8 +51,22 @@ class GoogleVertex(LLMProvider):
             "credentials": self.credentials,
         }
         if self.provider_config.url is not None:
-            params["base_url"] = str(self.provider_config.url)
-        return params
+            default_params["base_url"] = str(self.provider_config.url)
+
+        model_config = self.provider_config.models.get(self.model)
+        model_params = getattr(model_config, "parameters", None) or ModelParameters()
+        reasoning_config = model_params.reasoning_config or {}
+        if reasoning_config:
+            if "include_thoughts" in reasoning_config:
+                default_params["include_thoughts"] = reasoning_config[
+                    "include_thoughts"
+                ]
+            if "thinking_level" in reasoning_config:
+                default_params["thinking_level"] = reasoning_config["thinking_level"]
+            if "thinking_budget" in reasoning_config:
+                default_params["thinking_budget"] = reasoning_config["thinking_budget"]
+
+        return default_params
 
     def load(self) -> BaseChatModel:
         """Load LLM."""
@@ -80,7 +95,7 @@ class GoogleVertexAnthropic(LLMProvider):
             self.project = vertex_config.project
             self.location = vertex_config.location
 
-        return {
+        default_params: dict[str, Any] = {
             "model_name": self.model,
             "project": self.project,
             "location": self.location,
@@ -88,6 +103,23 @@ class GoogleVertexAnthropic(LLMProvider):
             "temperature": 0.01,
             "credentials": self.credentials,
         }
+
+        model_config = self.provider_config.models.get(self.model)
+        model_params = getattr(model_config, "parameters", None) or ModelParameters()
+        reasoning_config = model_params.reasoning_config or {}
+        if reasoning_config and reasoning_config.get("thinking_enabled"):
+            thinking_config = {}
+            if reasoning_config.get("thinking_effort") in ["high", "xhigh", "max"]:
+                thinking_config["type"] = "adaptive"
+                thinking_config["display"] = "summarized"
+            else:
+                thinking_config["type"] = "enabled"
+                budget = reasoning_config.get("budget_tokens", 0)
+                if budget > 0:
+                    thinking_config["budget_tokens"] = budget
+            default_params["model_kwargs"] = {"thinking": thinking_config}
+
+        return default_params
 
     def load(self) -> BaseChatModel:
         """Load LLM."""

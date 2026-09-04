@@ -1,10 +1,13 @@
 """Utility functions for LLM providers configuration."""
 
 import json
+from typing import Any
 
 from google.auth.credentials import Credentials as GoogleCredentials
 from google.oauth2 import credentials as oauth2_credentials
 from google.oauth2 import service_account
+
+from ols.app.models.config import ModelParameters
 
 # Vertex AI service account requires this scope to access the API
 # https://github.com/googleapis/python-genai/issues/2#issuecomment-2537279484
@@ -51,3 +54,45 @@ def load_vertex_credentials(credentials_json: str) -> GoogleCredentials:
         )  # type: ignore[no-untyped-call]
     msg = f"Unsupported Google credential type for Vertex: {cred_type!r}"
     raise ValueError(msg)
+
+
+def populate_openai_reasoning(
+    params: ModelParameters, default_parameters: dict[str, Any]
+) -> None:
+    """Populate reasoning configuration from model parameters."""
+    reasoning_config = params.reasoning_config or {}
+
+    if reasoning_config:
+        reasoning_parameters = dict(reasoning_config)
+        if "verbosity" in reasoning_parameters:
+            default_parameters["verbosity"] = reasoning_parameters.pop("verbosity")
+        default_parameters["reasoning"] = reasoning_parameters
+
+
+def populate_vllm_reasoning(
+    params: ModelParameters, default_parameters: dict[str, Any]
+) -> None:
+    """Populate reasoning configuration for vLLM (Chat Completions API).
+
+    Maps reasoning_config to vLLM-compatible parameters instead of using
+    the Responses API (which is not supported by vLLM). Maps effort setting
+    to reasoning_effort and ensures use_responses_api is False.
+    """
+    reasoning_config = params.reasoning_config or {}
+
+    if not reasoning_config:
+        return
+
+    reasoning_parameters = dict(reasoning_config)
+
+    # Map effort to reasoning_effort for vLLM
+    if "effort" in reasoning_parameters:
+        effort = reasoning_parameters.pop("effort")
+        default_parameters["reasoning_effort"] = effort
+
+    # Preserve other parameters (summary, verbosity, etc.)
+    if reasoning_parameters:
+        default_parameters["reasoning"] = reasoning_parameters
+
+    # Explicitly disable Responses API for vLLM (Chat Completions only)
+    default_parameters["use_responses_api"] = False

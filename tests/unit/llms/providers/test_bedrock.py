@@ -87,7 +87,7 @@ def test_load_anthropic_model(
     call_kwargs = mock_chat.call_args[1]
     assert call_kwargs["model_id"] == "us.anthropic.claude-opus-4-7"
     assert call_kwargs["region_name"] == "us-east-1"
-    assert "max_completion_tokens" not in call_kwargs
+    assert call_kwargs["max_tokens"] == 4096
     assert call_kwargs["bedrock_api_key"] == "secret_key"
 
 
@@ -117,7 +117,7 @@ def test_load_openai_model(
     )
     assert call_kwargs["openai_api_key"] == "secret_key"
     assert call_kwargs["use_responses_api"] is True
-    assert "max_completion_tokens" in call_kwargs
+    assert call_kwargs["max_tokens"] == 4096
 
 
 @patch(
@@ -142,7 +142,7 @@ def test_load_default_model(
     assert call_kwargs["base_url"] == "https://bedrock-mantle.us-east-1.api.aws/v1"
     assert call_kwargs["openai_api_key"] == "secret_key"
     assert call_kwargs["use_responses_api"] is False
-    assert "max_completion_tokens" in call_kwargs
+    assert call_kwargs["max_tokens"] == 4096
 
 
 def test_default_params(provider_config: ProviderConfig) -> None:
@@ -242,7 +242,7 @@ def test_params_handling(mock_chat: MagicMock, provider_config: ProviderConfig) 
 def test_max_tokens_remapped_for_openai_models(
     mock_chat: MagicMock, _mock_httpx: MagicMock, provider_config: ProviderConfig
 ) -> None:
-    """Test that max_tokens is remapped to max_completion_tokens for ChatOpenAI."""
+    """Test that max_tokens is passed through for ChatOpenAI."""
     bedrock = Bedrock(
         model="openai.gpt-5.4",
         params={"max_tokens": 1024},
@@ -251,8 +251,7 @@ def test_max_tokens_remapped_for_openai_models(
     bedrock.load()
 
     call_kwargs = mock_chat.call_args[1]
-    assert "max_tokens" not in call_kwargs
-    assert call_kwargs["max_completion_tokens"] == 1024
+    assert call_kwargs["max_tokens"] == 1024
 
 
 @patch(
@@ -266,7 +265,7 @@ def test_max_tokens_remapped_for_openai_models(
 def test_max_tokens_remapped_for_default_models(
     mock_chat: MagicMock, _mock_httpx: MagicMock, provider_config: ProviderConfig
 ) -> None:
-    """Test that max_tokens is remapped to max_completion_tokens for default route."""
+    """Test that max_tokens is passed through for default route."""
     bedrock = Bedrock(
         model="deepseek.v3.1",
         params={"max_tokens": 2048},
@@ -275,8 +274,7 @@ def test_max_tokens_remapped_for_default_models(
     bedrock.load()
 
     call_kwargs = mock_chat.call_args[1]
-    assert "max_tokens" not in call_kwargs
-    assert call_kwargs["max_completion_tokens"] == 2048
+    assert call_kwargs["max_tokens"] == 2048
 
 
 @patch(
@@ -617,3 +615,161 @@ def test_build_sigv4_auth_with_role(
         RoleArn="arn:aws:iam::123456789012:role/TestRole",
         RoleSessionName="ols-bedrock",
     )
+
+
+def test_anthropic_thinking_with_thinking_effort() -> None:
+    """Test Bedrock Anthropic reasoning with thinking_effort parameter."""
+    provider_config = ProviderConfig(
+        {
+            "name": "some_provider",
+            "type": "bedrock",
+            "url": "https://bedrock-mantle.us-east-1.api.aws",
+            "credentials_path": "tests/config/secret/apitoken",
+            "models": [
+                {
+                    "name": "anthropic.claude-opus-4-7",
+                    "parameters": {
+                        "reasoning_config": {
+                            "thinking_effort": "high",
+                        }
+                    },
+                }
+            ],
+        }
+    )
+    bedrock = Bedrock(
+        model="anthropic.claude-opus-4-7", params={}, provider_config=provider_config
+    )
+
+    params = {**bedrock.params}
+    model_params = bedrock.provider_config.models.get(bedrock.model)
+    from ols.app.models.config import ModelParameters
+
+    model_params_obj = getattr(model_params, "parameters", None) or ModelParameters()
+    bedrock._configure_anthropic_thinking(params, model_params_obj, 4096)
+
+    assert "additional_model_request_fields" in params
+    assert "thinking" in params["additional_model_request_fields"]
+    assert (
+        params["additional_model_request_fields"]["thinking"]["reasoning_effort"]
+        == "high"
+    )
+    # Sampling parameters should be removed when thinking is enabled
+    assert "temperature" not in params
+    assert "top_p" not in params
+    assert "top_k" not in params
+
+
+def test_anthropic_thinking_with_type_and_budget_tokens() -> None:
+    """Test Bedrock Anthropic reasoning fallback with type and budget_tokens."""
+    provider_config = ProviderConfig(
+        {
+            "name": "some_provider",
+            "type": "bedrock",
+            "url": "https://bedrock-mantle.us-east-1.api.aws",
+            "credentials_path": "tests/config/secret/apitoken",
+            "models": [
+                {
+                    "name": "anthropic.claude-opus-4-7",
+                    "parameters": {
+                        "reasoning_config": {
+                            "type": "enabled",
+                            "budget_tokens": 5000,
+                        }
+                    },
+                }
+            ],
+        }
+    )
+    bedrock = Bedrock(
+        model="anthropic.claude-opus-4-7", params={}, provider_config=provider_config
+    )
+
+    params = {**bedrock.params}
+    model_params = bedrock.provider_config.models.get(bedrock.model)
+    from ols.app.models.config import ModelParameters
+
+    model_params_obj = getattr(model_params, "parameters", None) or ModelParameters()
+    bedrock._configure_anthropic_thinking(params, model_params_obj, 4096)
+
+    assert "additional_model_request_fields" in params
+    assert "thinking" in params["additional_model_request_fields"]
+    assert params["additional_model_request_fields"]["thinking"]["type"] == "enabled"
+    # Budget tokens should be clamped to [1024, 25% of max_tokens]
+    assert (
+        params["additional_model_request_fields"]["thinking"]["budget_tokens"] == 1024
+    )
+    # Sampling parameters should be removed
+    assert "temperature" not in params
+    assert "top_p" not in params
+    assert "top_k" not in params
+
+
+def test_anthropic_thinking_budget_tokens_clamping() -> None:
+    """Test Bedrock Anthropic budget_tokens is clamped to valid range."""
+    provider_config = ProviderConfig(
+        {
+            "name": "some_provider",
+            "type": "bedrock",
+            "url": "https://bedrock-mantle.us-east-1.api.aws",
+            "credentials_path": "tests/config/secret/apitoken",
+            "models": [
+                {
+                    "name": "anthropic.claude-opus-4-7",
+                    "parameters": {
+                        "reasoning_config": {
+                            "type": "enabled",
+                            "budget_tokens": 50000,  # Exceeds max_tokens * 0.25
+                        }
+                    },
+                }
+            ],
+        }
+    )
+    bedrock = Bedrock(
+        model="anthropic.claude-opus-4-7", params={}, provider_config=provider_config
+    )
+
+    params = {**bedrock.params}
+    model_params = bedrock.provider_config.models.get(bedrock.model)
+    from ols.app.models.config import ModelParameters
+
+    model_params_obj = getattr(model_params, "parameters", None) or ModelParameters()
+    max_tokens = 4096
+    bedrock._configure_anthropic_thinking(params, model_params_obj, max_tokens)
+
+    # Budget should be clamped to 25% of 4096 = 1024
+    expected_max = int(max_tokens * 0.25)
+    assert (
+        params["additional_model_request_fields"]["thinking"]["budget_tokens"]
+        == expected_max
+    )
+
+
+def test_anthropic_no_thinking_config() -> None:
+    """Test Bedrock Anthropic with no reasoning_config."""
+    provider_config = ProviderConfig(
+        {
+            "name": "some_provider",
+            "type": "bedrock",
+            "url": "https://bedrock-mantle.us-east-1.api.aws",
+            "credentials_path": "tests/config/secret/apitoken",
+            "models": [
+                {
+                    "name": "anthropic.claude-opus-4-7",
+                }
+            ],
+        }
+    )
+    bedrock = Bedrock(
+        model="anthropic.claude-opus-4-7", params={}, provider_config=provider_config
+    )
+
+    params = {**bedrock.params}
+    from ols.app.models.config import ModelParameters
+
+    model_params_obj = ModelParameters()
+    bedrock._configure_anthropic_thinking(params, model_params_obj, 4096)
+
+    # Should return early without setting anything
+    assert "additional_model_request_fields" not in params
