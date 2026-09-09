@@ -1,6 +1,6 @@
 --index-url https://pypi.org/simple
-aiostream==0.7.1 \
-    --hash=sha256:272aaa0d8f83beb906f5aa9022bb59046bb7a103fa3770f807c31f918595acf6
+aiostream==0.7.2 \
+    --hash=sha256:ba9773f470cb0771f258c64e181a2a2b92b0aba76ce73585a5b1b40d8864247a
 banks==2.5.0 \
     --hash=sha256:fdd4fd54b84dbe31cb51a1173c960697c73d683a52fb0b1d1957a557a8d6fcc8
 bottleneck==1.6.0 \
@@ -19,18 +19,18 @@ ibm-watsonx-ai==1.7.1 \
     --hash=sha256:23d5885266b5f62b25dd96096319e1745df15f8477bd00dc4d5a338574e61efc
 jmespath==1.0.1 \
     --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
-langchain-aws==1.7.4 \
-    --hash=sha256:93b814fb55aa8464d152b05b985cd6664ddf8fc37e1dc2717b9b0bf903ea551b
+langchain-aws==1.7.5 \
+    --hash=sha256:90f50d10c0e55ebbf0a5151304d121a39975cc3e099aad5526e0ee37ea2eeb14
 langchain-google-vertexai==3.2.4 \
     --hash=sha256:f0c16b4b639037f60357dbf6d4aa3b0f301f23be6b33b0688c75902235cb9434
 langchain-ibm==1.1.0 \
     --hash=sha256:09695295a2773a2f651272586e86a95275872b404c11421d609cfb7866a17c26
 langchain-mcp-adapters==0.3.2 \
     --hash=sha256:61cd1a09597adb619a9bafb0642938ffc2a9463d699a753f7af0420ea46c381a
-llama-index-embeddings-huggingface==0.7.0 \
-    --hash=sha256:da8a2a65df9404112c4430dfada09d4f846ba165197a25dbe77f734014c56a87
-llama-index-vector-stores-faiss==0.6.0 \
-    --hash=sha256:00bfeb6cb7571e0e856566cb4f10c89b415b6108f151d9ad48ee9c31da563f5e
+llama-index-embeddings-huggingface==0.8.0 \
+    --hash=sha256:02f34df13e3b83e9169fcfdf624b6fbe906fce75b7448cdf69800babc281a9a6
+llama-index-vector-stores-faiss==0.7.0 \
+    --hash=sha256:6531eb0de3fbda882a16e442beeeed590209c5fd7a09f2cf235977d94e97fd63
 lomond==0.3.3 \
     --hash=sha256:427936596b144b4ec387ead99aac1560b77c8a78107d3d49415d3abbe79acbd3
 numexpr==2.14.2 \
