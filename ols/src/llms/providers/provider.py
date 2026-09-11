@@ -57,6 +57,8 @@ AzureOpenAIParameters = {
     ProviderParameter("verbose", bool),
     ProviderParameter("http_client", httpx.Client),
     ProviderParameter("http_async_client", httpx.AsyncClient),
+    ProviderParameter("reasoning", dict),
+    ProviderParameter("verbosity", str),
 }
 
 OpenAIParameters = {
@@ -92,6 +94,10 @@ RHOAIVLLMParameters = {
     ProviderParameter("verbose", bool),
     ProviderParameter("http_client", httpx.Client),
     ProviderParameter("http_async_client", httpx.AsyncClient),
+    ProviderParameter("reasoning", dict),
+    ProviderParameter("reasoning_effort", str),
+    ProviderParameter("verbosity", str),
+    ProviderParameter("use_responses_api", bool),
 }
 
 RHELAIVLLMParameters = {
@@ -108,6 +114,10 @@ RHELAIVLLMParameters = {
     ProviderParameter("verbose", bool),
     ProviderParameter("http_client", httpx.Client),
     ProviderParameter("http_async_client", httpx.AsyncClient),
+    ProviderParameter("reasoning", dict),
+    ProviderParameter("reasoning_effort", str),
+    ProviderParameter("verbosity", str),
+    ProviderParameter("use_responses_api", bool),
 }
 
 WatsonxParameters = {
@@ -139,6 +149,8 @@ GoogleVertexAnthropicParameters = {
     ProviderParameter("temperature", float),
     ProviderParameter("top_p", float),
     ProviderParameter("top_k", int),
+    ProviderParameter("reasoning", dict),
+    ProviderParameter("model_kwargs", dict),
 }
 
 GoogleVertexParameters = {
@@ -153,6 +165,9 @@ GoogleVertexParameters = {
     ProviderParameter("temperature", float),
     ProviderParameter("top_p", float),
     ProviderParameter("top_k", int),
+    ProviderParameter("thinking_level", str),
+    ProviderParameter("thinking_budget", int),
+    ProviderParameter("include_thoughts", bool),
 }
 
 BedrockParameters = {
@@ -161,7 +176,8 @@ BedrockParameters = {
     ProviderParameter("model", str),
     ProviderParameter("temperature", float),
     ProviderParameter("max_tokens", int),
-    ProviderParameter("max_completion_tokens", int),
+    ProviderParameter("reasoning", dict),
+    ProviderParameter("verbosity", str),
 }
 
 # available parameters for all supported LLM providers

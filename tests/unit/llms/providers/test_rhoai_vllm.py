@@ -5,6 +5,7 @@ import pytest
 from langchain_openai.chat_models.base import ChatOpenAI
 
 from ols.app.models.config import ProviderConfig
+from ols.src.llms.providers.chat_vlllm_reasoning import ChatVLLMReasoning
 from ols.src.llms.providers.rhoai_vllm import RHOAIVLLM
 
 
@@ -231,3 +232,56 @@ def test_params_replace_default_values_with_none(provider_config):
     # known parameter(s) should be there, now with None values
     assert "base_url" in rhoai_vllm.params
     assert rhoai_vllm.params["base_url"] is None
+
+
+def test_uses_chat_vllm_reasoning_when_reasoning_config_present():
+    """Test that ChatVLLMReasoning is used when reasoning_config is present."""
+    provider_config = ProviderConfig(
+        {
+            "name": "some_provider",
+            "type": "rhoai_vllm",
+            "url": "test_url",
+            "credentials_path": "tests/config/secret/apitoken",
+            "models": [
+                {
+                    "name": "test_model_name",
+                    "parameters": {
+                        "reasoning_config": {
+                            "effort": "medium",
+                            "summary": "concise",
+                        }
+                    },
+                }
+            ],
+        }
+    )
+    rhoai_vllm = RHOAIVLLM(
+        model="test_model_name", params={}, provider_config=provider_config
+    )
+    llm = rhoai_vllm.load()
+    assert isinstance(llm, ChatVLLMReasoning)
+    assert "reasoning" in rhoai_vllm.params
+
+
+def test_uses_chat_open_ai_when_no_reasoning_config():
+    """Test that ChatOpenAI is used when reasoning_config is not present."""
+    provider_config = ProviderConfig(
+        {
+            "name": "some_provider",
+            "type": "rhoai_vllm",
+            "url": "test_url",
+            "credentials_path": "tests/config/secret/apitoken",
+            "models": [
+                {
+                    "name": "test_model_name",
+                }
+            ],
+        }
+    )
+    rhoai_vllm = RHOAIVLLM(
+        model="test_model_name", params={}, provider_config=provider_config
+    )
+    llm = rhoai_vllm.load()
+    assert isinstance(llm, ChatOpenAI)
+    assert not isinstance(llm, ChatVLLMReasoning)
+    assert "reasoning" not in rhoai_vllm.params

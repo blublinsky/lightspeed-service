@@ -398,3 +398,272 @@ def test_anthropic_authorized_user_credentials(
     call_kwargs = mock_chat.call_args[1]
     assert call_kwargs["project"] == "my-specific-project"
     assert call_kwargs["location"] == "us-east5"
+
+
+@patch(
+    "ols.src.llms.providers.google_vertex.ChatGoogleGenerativeAI",
+    autospec=True,
+)
+def test_gemini_reasoning_config_with_include_thoughts_true(mock_chat, tmpdir):
+    """Test Gemini respects include_thoughts=true in reasoning_config."""
+    credentials_json = generate_service_account_json_string()
+    p = tmpdir.mkdir("sub").join("service-account.json")
+    p.write(credentials_json)
+
+    config_dict = {
+        "name": "some_provider",
+        "type": "google_vertex",
+        "credentials_path": p.strpath,
+        "project_id": "my-gcp-project",
+        "models": [
+            {
+                "name": "gemini-2.5-flash",
+                "parameters": {
+                    "reasoning_config": {
+                        "include_thoughts": True,
+                        "thinking_level": "high",
+                        "thinking_budget": 5000,
+                    }
+                },
+            }
+        ],
+    }
+    provider_config = ProviderConfig(config_dict)
+    vertex = GoogleVertex(
+        model="gemini-2.5-flash", params={}, provider_config=provider_config
+    )
+    llm = vertex.load()
+    assert llm is not None
+    assert vertex.default_params["include_thoughts"] is True
+    assert vertex.default_params["thinking_level"] == "high"
+    assert vertex.default_params["thinking_budget"] == 5000
+
+    call_kwargs = mock_chat.call_args[1]
+    assert call_kwargs["include_thoughts"] is True
+    assert call_kwargs["thinking_level"] == "high"
+    assert call_kwargs["thinking_budget"] == 5000
+
+
+@patch(
+    "ols.src.llms.providers.google_vertex.ChatGoogleGenerativeAI",
+    autospec=True,
+)
+def test_gemini_reasoning_config_with_include_thoughts_false(mock_chat, tmpdir):
+    """Test Gemini respects include_thoughts=false in reasoning_config."""
+    credentials_json = generate_service_account_json_string()
+    p = tmpdir.mkdir("sub").join("service-account.json")
+    p.write(credentials_json)
+
+    config_dict = {
+        "name": "some_provider",
+        "type": "google_vertex",
+        "credentials_path": p.strpath,
+        "project_id": "my-gcp-project",
+        "models": [
+            {
+                "name": "gemini-2.5-flash",
+                "parameters": {
+                    "reasoning_config": {
+                        "include_thoughts": False,
+                        "thinking_level": "low",
+                    }
+                },
+            }
+        ],
+    }
+    provider_config = ProviderConfig(config_dict)
+    vertex = GoogleVertex(
+        model="gemini-2.5-flash", params={}, provider_config=provider_config
+    )
+    llm = vertex.load()
+    assert llm is not None
+    assert vertex.default_params["include_thoughts"] is False
+    assert vertex.default_params["thinking_level"] == "low"
+
+    call_kwargs = mock_chat.call_args[1]
+    assert call_kwargs["include_thoughts"] is False
+    assert call_kwargs["thinking_level"] == "low"
+
+
+@patch(
+    "ols.src.llms.providers.google_vertex.ChatGoogleGenerativeAI",
+    autospec=True,
+)
+def test_gemini_reasoning_config_omit_include_thoughts(mock_chat, tmpdir):
+    """Test Gemini without include_thoughts in reasoning_config."""
+    credentials_json = generate_service_account_json_string()
+    p = tmpdir.mkdir("sub").join("service-account.json")
+    p.write(credentials_json)
+
+    config_dict = {
+        "name": "some_provider",
+        "type": "google_vertex",
+        "credentials_path": p.strpath,
+        "project_id": "my-gcp-project",
+        "models": [
+            {
+                "name": "gemini-2.5-flash",
+                "parameters": {
+                    "reasoning_config": {
+                        "thinking_level": "medium",
+                    }
+                },
+            }
+        ],
+    }
+    provider_config = ProviderConfig(config_dict)
+    vertex = GoogleVertex(
+        model="gemini-2.5-flash", params={}, provider_config=provider_config
+    )
+    llm = vertex.load()
+    assert llm is not None
+    # When not specified in reasoning_config, include_thoughts should not be set
+    assert "include_thoughts" not in vertex.default_params
+    assert vertex.default_params["thinking_level"] == "medium"
+
+    call_kwargs = mock_chat.call_args[1]
+    assert "include_thoughts" not in call_kwargs
+    assert call_kwargs["thinking_level"] == "medium"
+
+
+@patch(
+    "ols.src.llms.providers.google_vertex.ChatAnthropicVertex",
+    autospec=True,
+)
+def test_anthropic_reasoning_config_with_thinking_enabled_high_effort(
+    mock_chat, tmpdir
+):
+    """Test Anthropic on Vertex with thinking_enabled and high thinking_effort maps to adaptive."""
+    credentials_json = generate_service_account_json_string()
+    p = tmpdir.mkdir("sub").join("service-account.json")
+    p.write(credentials_json)
+
+    config_dict = {
+        "name": "some_provider",
+        "type": "google_vertex_anthropic",
+        "url": "https://us-east5-aiplatform.googleapis.com",
+        "credentials_path": p.strpath,
+        "google_vertex_anthropic_config": {
+            "project": "my-specific-project",
+            "location": "us-east5",
+        },
+        "models": [
+            {
+                "name": "claude-opus-4-6",
+                "parameters": {
+                    "reasoning_config": {
+                        "thinking_enabled": True,
+                        "thinking_effort": "high",
+                    }
+                },
+            }
+        ],
+    }
+    provider_config = ProviderConfig(config_dict)
+    vertex = GoogleVertexAnthropic(
+        model="claude-opus-4-6", params={}, provider_config=provider_config
+    )
+    llm = vertex.load()
+    assert llm is not None
+
+    # Check that model_kwargs thinking config has adaptive type with summarized display
+    model_kwargs = vertex.default_params.get("model_kwargs", {})
+    thinking_config = model_kwargs.get("thinking", {})
+    assert thinking_config["type"] == "adaptive"
+    assert thinking_config["display"] == "summarized"
+
+    call_kwargs = mock_chat.call_args[1]
+    assert call_kwargs["model_kwargs"]["thinking"]["type"] == "adaptive"
+    assert call_kwargs["model_kwargs"]["thinking"]["display"] == "summarized"
+
+
+@patch(
+    "ols.src.llms.providers.google_vertex.ChatAnthropicVertex",
+    autospec=True,
+)
+def test_anthropic_reasoning_config_with_thinking_enabled_low_effort(mock_chat, tmpdir):
+    """Test Anthropic on Vertex with thinking_enabled and low thinking_effort maps to enabled."""
+    credentials_json = generate_service_account_json_string()
+    p = tmpdir.mkdir("sub").join("service-account.json")
+    p.write(credentials_json)
+
+    config_dict = {
+        "name": "some_provider",
+        "type": "google_vertex_anthropic",
+        "url": "https://us-east5-aiplatform.googleapis.com",
+        "credentials_path": p.strpath,
+        "google_vertex_anthropic_config": {
+            "project": "my-specific-project",
+            "location": "us-east5",
+        },
+        "models": [
+            {
+                "name": "claude-opus-4-6",
+                "parameters": {
+                    "reasoning_config": {
+                        "thinking_enabled": True,
+                        "thinking_effort": "low",
+                    }
+                },
+            }
+        ],
+    }
+    provider_config = ProviderConfig(config_dict)
+    vertex = GoogleVertexAnthropic(
+        model="claude-opus-4-6", params={}, provider_config=provider_config
+    )
+    llm = vertex.load()
+    assert llm is not None
+
+    # Check that model_kwargs thinking config has enabled type (not adaptive)
+    model_kwargs = vertex.default_params.get("model_kwargs", {})
+    thinking_config = model_kwargs.get("thinking", {})
+    assert thinking_config["type"] == "enabled"
+    assert "display" not in thinking_config
+
+    call_kwargs = mock_chat.call_args[1]
+    assert call_kwargs["model_kwargs"]["thinking"]["type"] == "enabled"
+    assert "display" not in call_kwargs["model_kwargs"]["thinking"]
+
+
+@patch(
+    "ols.src.llms.providers.google_vertex.ChatAnthropicVertex",
+    autospec=True,
+)
+def test_anthropic_reasoning_config_without_thinking_enabled(mock_chat, tmpdir):
+    """Test Anthropic on Vertex without thinking_enabled does not set thinking config."""
+    credentials_json = generate_service_account_json_string()
+    p = tmpdir.mkdir("sub").join("service-account.json")
+    p.write(credentials_json)
+
+    config_dict = {
+        "name": "some_provider",
+        "type": "google_vertex_anthropic",
+        "url": "https://us-east5-aiplatform.googleapis.com",
+        "credentials_path": p.strpath,
+        "google_vertex_anthropic_config": {
+            "project": "my-specific-project",
+            "location": "us-east5",
+        },
+        "models": [
+            {
+                "name": "claude-opus-4-6",
+            }
+        ],
+    }
+    provider_config = ProviderConfig(config_dict)
+    vertex = GoogleVertexAnthropic(
+        model="claude-opus-4-6", params={}, provider_config=provider_config
+    )
+    llm = vertex.load()
+    assert llm is not None
+
+    # Check that model_kwargs is not set when thinking_enabled is not provided
+    model_kwargs = vertex.default_params.get("model_kwargs", {})
+    assert "thinking" not in model_kwargs or model_kwargs.get("thinking", {}) == {}
+
+    call_kwargs = mock_chat.call_args[1]
+    assert (
+        "model_kwargs" not in call_kwargs
+        or call_kwargs.get("model_kwargs", {}).get("thinking", {}) == {}
+    )
